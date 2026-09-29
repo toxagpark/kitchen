@@ -1,0 +1,17 @@
+@startuml
+
+title C4 - Kitchen
+
+actor "Пользователь" as User
+
+rectangle "Web Client" as Web
+rectangle "Kitchen" as Kitchen
+database "PostgreSQL" as DB
+rectangle "Restaurant Demo" as Restaurant
+
+User --> Web : использует
+Web --> Kitchen : HTTP
+Kitchen --> DB : SQL
+Kitchen --> Restaurant : HTTP
+
+@enduml

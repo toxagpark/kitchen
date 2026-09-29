@@ -1,0 +1,395 @@
+openapi: 3.0.3
+
+info:
+  title: Avito.Kitchen API
+  description: MVP API для поиска ресторанов, просмотра меню и оформления заказов.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:5050
+    description: Локальный сервер
+
+tags:
+  - name: Restaurants
+    description: Работа с ресторанами
+  - name: Menu
+    description: Работа с меню
+  - name: Orders
+    description: Работа с заказами
+
+paths:
+
+  /api/v1/restaurants:
+    get:
+      tags:
+        - Restaurants
+      operationId: getRestaurants
+      summary: Получить рестораны рядом с пользователем
+      description: Возвращает рестораны, отсортированные по расстоянию от указанной геолокации.
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          description: Широта пользователя.
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+          example: 55.7558
+
+        - name: longitude
+          in: query
+          required: true
+          description: Долгота пользователя.
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+          example: 37.6173
+
+        - name: page
+          in: query
+          required: false
+          description: Номер страницы, начиная с 0.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          example: 0
+
+        - name: page_size
+          in: query
+          required: false
+          description: Количество ресторанов на странице.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 20
+
+      responses:
+        '200':
+          description: Список ресторанов.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RestaurantResponse'
+
+        '400':
+          description: Некорректные параметры запроса.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid argument
+                message: invalid request parameters
+
+        '500':
+          description: Внутренняя ошибка сервера.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: internal server error
+                message: unexpected internal error
+
+  /api/v1/restaurants/{restaurant_id}/menu:
+    get:
+      tags:
+        - Menu
+      operationId: getRestaurantMenu
+      summary: Получить меню ресторана
+      description: Возвращает блюда выбранного ресторана.
+      parameters:
+        - name: restaurant_id
+          in: path
+          required: true
+          description: Идентификатор ресторана.
+          schema:
+            type: string
+            format: uuid
+          example: 83b417b6-e153-4a09-b26a-4f226830980d
+
+      responses:
+        '200':
+          description: Меню ресторана.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MenuItemResponse'
+
+        '400':
+          description: Некорректный идентификатор ресторана.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid argument
+                message: invalid restaurant id
+
+        '500':
+          description: Внутренняя ошибка сервера.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: internal server error
+                message: unexpected internal error
+
+  /api/v1/orders:
+    post:
+      tags:
+        - Orders
+      operationId: createOrder
+      summary: Создать заказ
+      description: |
+        Создаёт заказ на основе текущего состояния меню ресторана.
+        Клиент передаёт только идентификаторы блюд и их количество.
+        Стоимость заказа рассчитывается сервером на основе текущих цен меню.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+            example:
+              restaurant_id: 83b417b6-e153-4a09-b26a-4f226830980d
+              items:
+                - menu_item_id: 117f50a0-7719-47f0-b63c-80c28224fed3
+                  quantity: 2
+
+      responses:
+        '201':
+          description: Заказ создан.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+
+        '400':
+          description: Некорректные данные заказа.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: invalid argument
+                message: invalid order data
+
+        '404':
+          description: Ресторан или блюдо не найдено.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: not found
+                message: restaurant or menu item not found
+
+        '409':
+          description: Заказ невозможно создать.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: conflict
+                message: menu item is unavailable
+
+        '500':
+          description: Внутренняя ошибка сервера.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: internal server error
+                message: unexpected internal error
+
+components:
+
+  schemas:
+
+    RestaurantResponse:
+      type: object
+      required:
+        - id
+        - name
+        - address
+        - distance_m
+        - is_open
+        - delivery_available
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор ресторана.
+          example: 83b417b6-e153-4a09-b26a-4f226830980d
+
+        name:
+          type: string
+          description: Название ресторана.
+          example: Пицца Хаус
+
+        address:
+          type: string
+          description: Адрес ресторана.
+          example: ул. Ленина, 10
+
+        distance_m:
+          type: integer
+          description: Расстояние от пользователя до ресторана в метрах.
+          example: 850
+
+        is_open:
+          type: boolean
+          description: Открыт ли ресторан в текущий момент.
+          example: true
+
+        delivery_available:
+          type: boolean
+          description: Доступна ли доставка до пользователя.
+          example: true
+
+    MenuItemResponse:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - price
+        - is_available
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор блюда.
+          example: 117f50a0-7719-47f0-b63c-80c28224fed3
+
+        name:
+          type: string
+          description: Название блюда.
+          example: Драники
+
+        description:
+          type: string
+          description: Описание блюда.
+          example: Картофельные драники со сметаной
+
+        price:
+          type: integer
+          format: int64
+          description: Цена блюда в копейках.
+          example: 29900
+
+        is_available:
+          type: boolean
+          description: Доступно ли блюдо для заказа.
+          example: true
+
+    CreateOrderRequest:
+      type: object
+      required:
+        - restaurant_id
+        - items
+      properties:
+        restaurant_id:
+          type: string
+          format: uuid
+          description: Идентификатор ресторана.
+          example: 83b417b6-e153-4a09-b26a-4f226830980d
+
+        items:
+          type: array
+          minItems: 1
+          description: Список блюд и их количества.
+          items:
+            $ref: '#/components/schemas/CreateOrderItemRequest'
+
+    CreateOrderItemRequest:
+      type: object
+      required:
+        - menu_item_id
+        - quantity
+      properties:
+        menu_item_id:
+          type: string
+          format: uuid
+          description: Идентификатор блюда.
+          example: 117f50a0-7719-47f0-b63c-80c28224fed3
+
+        quantity:
+          type: integer
+          minimum: 1
+          description: Количество блюда.
+          example: 2
+
+    OrderResponse:
+      type: object
+      required:
+        - id
+        - restaurant_id
+        - status
+        - total_price
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Идентификатор заказа.
+          example: 8f3a1c2e-7b4d-4f91-9c62-123456789abc
+
+        restaurant_id:
+          type: string
+          format: uuid
+          description: Идентификатор ресторана.
+          example: 83b417b6-e153-4a09-b26a-4f226830980d
+
+        status:
+          type: string
+          description: Статус заказа.
+          enum:
+            - pending
+            - accepted
+            - rejected
+          example: accepted
+
+        total_price:
+          type: integer
+          format: int64
+          description: Итоговая стоимость заказа в копейках.
+          example: 59800
+
+        created_at:
+          type: string
+          format: date-time
+          description: Время создания заказа.
+          example: 2026-09-07T12:30:00Z
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Код или тип ошибки.
+          example: invalid argument
+
+        message:
+          type: string
+          description: Описание ошибки.
+          example: invalid request parameters

@@ -1,0 +1,98 @@
+services:
+  kitchen_postgres:
+    image: postgres:18.1-bookworm
+    container_name: kitchen_env_postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - kitchen_pgdata:/var/lib/postgresql
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kitchen_postgres_migrate:
+    image: migrate/migrate:v4.19.1
+    volumes: 
+      - ${PROJECT_ROOT}/migrations:/migrations
+    command:
+      - -path=/migrations
+      - -database=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@kitchen_postgres:5432/${POSTGRES_DB}?sslmode=disable
+      - up
+    depends_on:
+      kitchen_postgres:
+        condition: service_healthy
+
+  port_forwarder:
+    image: alpine/socat:1.8.0.3
+    container_name: kitchen_pg_port_forwarder
+    command: tcp-listen:5432,fork,reuseaddr tcp-connect:kitchen_postgres:5432
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  kitchen:
+    build:
+      context: ${PROJECT_ROOT}
+      dockerfile: ${PROJECT_ROOT}/cmd/kitchen/Dockerfile
+
+    container_name: kitchen
+
+    environment:
+      - HTTP_ADDR=:5050
+      - HTTP_SHUTDOWN_TIMEOUT=${HTTP_SHUTDOWN_TIMEOUT}
+
+      - POSTGRES_HOST=kitchen_postgres
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_TIMEOUT=${POSTGRES_TIMEOUT}
+
+      - LOGGER_LEVEL=${LOGGER_LEVEL}
+      - TIME_ZONE=${TIME_ZONE}
+      - LOGGER_FOLDER=/app/out/logs
+
+      - RESTAURANT_URL=${RESTAURANT_URL}
+      - RESTAURANT_ORDER_PATH=${RESTAURANT_ORDER_PATH}
+      # CORS: разрешаем запросы к Kitchen из Swagger UI (localhost:8080)
+      - HTTP_ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
+
+    volumes:
+      - ${PROJECT_ROOT}/out/logs:/app/out/logs
+
+    ports:
+      - "5050:5050"
+
+    restart: always
+
+    depends_on:
+      kitchen_postgres_migrate:
+        condition: service_completed_successfully
+
+  restaurant-demo:
+    build:
+      context: .
+      dockerfile: ./cmd/restaurant-demo/Dockerfile
+
+    container_name: restaurant-demo
+
+    ports:
+      - "8081:8081"
+
+    restart: always
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui
+    container_name: kitchen_swagger
+    environment:
+      SWAGGER_JSON: /openapi/openapi.yaml
+    volumes:
+      - ./openapi:/openapi:ro
+    ports:
+      - "8080:8080"
+
+volumes:
+  kitchen_pgdata:
